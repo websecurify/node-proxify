@@ -1,0 +1,10 @@
+#!/usr/bin/env node
+
+# ---
+
+lib = require '../lib'
+
+# ---
+
+p = lib.create_proxy()
+p.listen(1337)
