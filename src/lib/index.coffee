@@ -97,14 +97,14 @@ exports.pem_manager = new class
 exports.connection_manager = new class
 	constructor: () ->
 		@connections = {}
-		@port = 1337
+		@port = 1336
 		
 	get: (hostname, port, callback) ->
 		netloc = "#{hostname}:#{port}"
 		
 		# +++
 		
-		return callback null, @connections[netloc] if @connections[netloc]?
+		return callback null, @connections[netloc], false if @connections[netloc]?
 		
 		# +++
 		
@@ -130,12 +130,22 @@ exports.connection_manager = new class
 			
 			# ^^^
 			
-			connection.server.listen connection.server_port, () -> callback null, connection
+			connection.server.on 'error', (error) =>
+				delete @connections[netloc]
+				
+				# ~~~
+				
+				@get hostname, port, callback if error.code == 'EADDRINUSE'
+				
+			# ^^^
 			
+			connection.server.listen connection.server_port, () ->
+				callback null, connection, true
+				
 # ---
 
-exports.create_proxy = (options={}) ->
-	proxy = exports.create_bare_proxy()
+exports.create_proxy = (config={}) ->
+	proxy = exports.create_bare_proxy http, null
 	
 	# +++
 	
@@ -144,13 +154,13 @@ exports.create_proxy = (options={}) ->
 		
 		# ^^
 		
-		exports.connection_manager.get options.hostname, options.port, (err, connection) ->
+		exports.connection_manager.get options.hostname, options.port, (err, connection, is_new) ->
 			clt_socket.destroy() if err
 			
 			# ~~~
 			
 			srv_socket = net.connect connection.server_port, 'localhost', () ->
-				clt_socket.write "HTTP/1.1 200 Connection Established\r\nProxy-agent: #{options.agent ? 'Proxify'}\r\n\r\n"
+				clt_socket.write "HTTP/1.1 200 Connection Established\r\nProxy-agent: #{config.agent ? 'Proxify'}\r\n\r\n"
 				srv_socket.write head
 				
 				# ~~~
@@ -163,6 +173,16 @@ exports.create_proxy = (options={}) ->
 			clt_socket.on 'error', () -> srv_socket.destroy()
 			srv_socket.on 'error', () -> clt_socket.destroy()
 			
+			# ~~~
+			
+			if is_new
+				connection.server.on 'request', (request, response) -> proxy.emit 'request', request, response
+				connection.server.on 'close', () -> proxy.emit 'close'
+				connection.server.on 'checkContinue', (request, response) -> proxy.emit 'checkContinue', request, response
+				connection.server.on 'connect', (request, socket, head) -> proxy.emit 'connect', request, socket, head
+				connection.server.on 'upgrade', (request, socket, head) -> proxy.emit 'upgrade', request, socket, head
+				connection.server.on 'clientError', (exception, socket) -> proxy.emit 'clientError', exception, socket
+				
 	# +++
 	
 	return proxy
