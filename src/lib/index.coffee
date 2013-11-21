@@ -99,7 +99,7 @@ exports.create_bare_proxy = (srv_imp=http, config=null) ->
 	
 # ---
 
-exports.pem_manager = new class
+exports.security_manager = new class
 	constructor: () ->
 		@default_key = """
 		-----BEGIN RSA PRIVATE KEY-----
@@ -137,37 +137,22 @@ exports.pem_manager = new class
 		-----END CERTIFICATE-----
 		"""
 		
-		# +++
-		
-		@pems = {}
-		
 	get: (hostname, port, callback) ->
-		netloc = "#{hostname}:#{port}"
-		
-		# +++
-		
-		return callback null, @pems[netloc] if @pems[netloc]?
-		
-		# +++
-		
-		pem = {
+		security = {
 			key: @default_key
 			cert: @default_cert
 		}
 		
 		# +++
 		
-		@pems[netloc] = pem
-		
-		# +++
-		
-		return callback null, pem
+		return callback null, security
 		
 # ---
 
 exports.connection_manager = new class
 	constructor: () ->
 		@connections = {}
+		@queue = []
 		@port = 1337
 		
 	get: (hostname, port, callback) ->
@@ -179,43 +164,63 @@ exports.connection_manager = new class
 		
 		# +++
 		
-		exports.pem_manager.get hostname, port, (err, pem) =>
-			return err if err
-			
+		@queue.push {hostname: hostname, port: port, callback: callback, netloc: netloc}
+		
+		# +++
+		
+		@ignite()
+		
+	ignite: () ->
+		next = @queue.pop()
+		
+		# +++
+		
+		return if not next
+		
+		# +++
+		
+		exports.security_manager.get next.hostname, next.port, (err, security) =>
+			if err
+				next.callback err
+				
+				# ~~~
+				
+				return @ignite()
+				
 			# ^^^
 			
 			connection = {
 				server_port: ++@port
 				server: exports.create_bare_proxy https, {
 					overwrite_protocol: 'https:'
-					overwrite_hostname: hostname
-					overwrite_port: port
-					key: pem.key
-					cert: pem.cert
+					overwrite_hostname: next.hostname
+					overwrite_port: next.port
+					key: security.key
+					cert: security.cert
 				}
 			}
 			
 			# ^^^
 			
-			@connections[netloc] = connection
-			
+			connection.server.on 'error', (error) =>
+				@get next.hostname, next.port, next.callback if error.code == 'EADDRINUSE'
+				
 			# ^^^
 			
-			connection.server.on 'error', (error) =>
-				delete @connections[netloc]
+			connection.server.listen connection.server_port, () =>
+				@connections[next.netloc] = connection
 				
 				# ~~~
 				
-				@get hostname, port, callback if error.code == 'EADDRINUSE'
+				next.callback null, connection, true
 				
-			# ^^^
-			
-			connection.server.listen connection.server_port, () ->
-				callback null, connection, true
+				# ~~~
+				
+				return @ignite()
 				
 # ---
 
-exports.create_proxy = (config={}) ->
+exports.create_mitm_proxy = (config={}) ->
 	proxy = exports.create_bare_proxy http, null
 	
 	# +++
