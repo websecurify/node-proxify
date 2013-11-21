@@ -25,16 +25,23 @@ exports.create_bare_proxy = (srv_imp=http, config=null) ->
 		# ^^^
 		
 		if config
-			options.protocol ?= config.overwrite_protocol
-			options.hostname ?= config.overwrite_hostname
-			options.port ?= config.overwrite_port
-			
+			options.protocol = config.overwrite_protocol if config.overwrite_protocol?
+			options.hostname = config.overwrite_hostname if config.overwrite_hostname?
+			options.port = config.overwrite_port if config.overwrite_port?
+			console.log config
+		# ^^^
+		
+		options.protocol ?= 'http:'
+		
+		# ~~~
+		
+		req.url = url.format options
+		
 		# ^^^
 		
 		clt_imp = switch
 			when options.protocol == 'http:' then http
 			when options.protocol == 'https:' then https
-			else http
 			
 		# ^^^
 		
@@ -97,7 +104,7 @@ exports.pem_manager = new class
 exports.connection_manager = new class
 	constructor: () ->
 		@connections = {}
-		@port = 1336
+		@port = 1337
 		
 	get: (hostname, port, callback) ->
 		netloc = "#{hostname}:#{port}"
@@ -152,11 +159,18 @@ exports.create_proxy = (config={}) ->
 	proxy.on 'connect', (req, clt_socket, head) ->
 		options = url.parse "https://#{req.url}"
 		
-		# ^^
+		# ^^^
 		
 		exports.connection_manager.get options.hostname, options.port, (err, connection, is_new) ->
 			clt_socket.destroy() if err
 			
+			# ~~~
+			
+			if is_new
+				connection.server.emit = do (emit=connection.server.emit) -> (type, args...) ->
+					emit.call @, type, args...
+					proxy.emit "sub-#{type}", args...
+					
 			# ~~~
 			
 			srv_socket = net.connect connection.server_port, 'localhost', () ->
@@ -173,16 +187,6 @@ exports.create_proxy = (config={}) ->
 			clt_socket.on 'error', () -> srv_socket.destroy()
 			srv_socket.on 'error', () -> clt_socket.destroy()
 			
-			# ~~~
-			
-			if is_new
-				connection.server.on 'request', (request, response) -> proxy.emit 'request', request, response
-				connection.server.on 'close', () -> proxy.emit 'close'
-				connection.server.on 'checkContinue', (request, response) -> proxy.emit 'checkContinue', request, response
-				connection.server.on 'connect', (request, socket, head) -> proxy.emit 'connect', request, socket, head
-				connection.server.on 'upgrade', (request, socket, head) -> proxy.emit 'upgrade', request, socket, head
-				connection.server.on 'clientError', (exception, socket) -> proxy.emit 'clientError', exception, socket
-				
 	# +++
 	
 	return proxy
