@@ -2,15 +2,6 @@ url = require 'url'
 net = require 'net'
 http = require 'http'
 https = require 'https'
-winston = require 'winston'
-
-# ---
-
-exports.logger = new winston.Logger {
-	transports: [
-		new winston.transports.Console
-	]
-}
 
 # ---
 
@@ -20,11 +11,19 @@ exports.create_bare_proxy = (srv_imp=http, config=null) ->
 	# +++
 	
 	proxy.on 'request', (req, res) ->
-		exports.logger.info "received request for #{req.url}"
+		port = {}
 		
 		# ^^^
 		
-		proxy.emit 'intercept-request', req
+		port.req = req
+		
+		# ^^^
+		
+		proxy.emit 'intercept-request', port
+		
+		# ^^^
+		
+		req = port.req
 		
 		# ^^^
 		
@@ -62,11 +61,15 @@ exports.create_bare_proxy = (srv_imp=http, config=null) ->
 		# ^^^
 		
 		connector.on 'response', (server_res) ->
-			exports.logger.info "received response for #{req.url}"
+			port.res = server_res
 			
-			# ^^^
+			# ~~~
 			
-			proxy.emit 'intercept-response', server_res
+			proxy.emit 'intercept-response', port
+			
+			# ~~~
+			
+			server_res = port.res
 			
 			# ~~~
 			
@@ -76,24 +79,19 @@ exports.create_bare_proxy = (srv_imp=http, config=null) ->
 			
 			server_res.pipe res, {end: true}
 			
-			server_res.on 'end', () ->
-				# NOTE: probably not correct but without this connection will never end
-				server_res.socket.end()
-				#
-				
+			# ~~~
+			
+			server_res.on 'end', () -> server_res.socket.end() # NOTE: without this connection will never end
+			
 		# ^^^
 		
 		connector.on 'error', (error) ->
-			exports.logger.error 'connector error', error
+			res.writeHead 500, {'Content-Type': 'text/plain'}
+			res.end 'Something blew up!'
 			
 		# +++
 		
 		req.pipe connector, {end: true}
-		
-	# +++
-	
-	proxy.on 'error', (error) ->
-		exports.logger.error 'proxy error', error
 		
 	# +++
 	
