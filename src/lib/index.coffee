@@ -1,19 +1,30 @@
-fs = require 'fs'
-
 url = require 'url'
 net = require 'net'
 http = require 'http'
 https = require 'https'
+winston = require 'winston'
+
+# ---
+
+exports.logger = new winston.Logger {
+	transports: [
+		new winston.transports.Console
+	]
+}
 
 # ---
 
 exports.create_bare_proxy = (srv_imp=http, config=null) ->
-	proxy = srv_imp.createServer(config)
+	proxy = srv_imp.createServer config
 	
 	# +++
 	
 	proxy.on 'request', (req, res) ->
-		req.pause()
+		exports.logger.info "received request for #{req.url}"
+		
+		# ^^^
+		
+		proxy.emit 'intercept-request', req
 		
 		# ^^^
 		
@@ -28,7 +39,7 @@ exports.create_bare_proxy = (srv_imp=http, config=null) ->
 			options.protocol = config.overwrite_protocol if config.overwrite_protocol?
 			options.hostname = config.overwrite_hostname if config.overwrite_hostname?
 			options.port = config.overwrite_port if config.overwrite_port?
-			console.log config
+			
 		# ^^^
 		
 		options.protocol ?= 'http:'
@@ -42,30 +53,47 @@ exports.create_bare_proxy = (srv_imp=http, config=null) ->
 		clt_imp = switch
 			when options.protocol == 'http:' then http
 			when options.protocol == 'https:' then https
+			else http
 			
 		# ^^^
 		
-		connector = clt_imp.request options, (server_res) ->
-			server_res.pause()
-			
-			# ~~~
-			
-			res.writeHeader(server_res.statusCode, server_res.headers)
-			
-			# ~~~
-			
-			server_res.pipe(res)
-			server_res.resume()
-			
+		connector = clt_imp.request options
+		
 		# ^^^
 		
-		req.on 'error', () ->
-		connector.on 'error', () ->
+		connector.on 'response', (server_res) ->
+			exports.logger.info "received response for #{req.url}"
+			
+			# ^^^
+			
+			proxy.emit 'intercept-response', server_res
+			
+			# ~~~
+			
+			res.writeHead server_res.statusCode, server_res.headers
+			
+			# ~~~
+			
+			server_res.pipe res, {end: true}
+			
+			server_res.on 'end', () ->
+				# NOTE: probably not correct but without this connection will never end
+				server_res.socket.end()
+				#
+				
+		# ^^^
 		
+		connector.on 'error', (error) ->
+			exports.logger.error 'connector error', error
+			
 		# +++
 		
-		req.pipe(connector)
-		req.resume()
+		req.pipe connector, {end: true}
+		
+	# +++
+	
+	proxy.on 'error', (error) ->
+		exports.logger.error 'proxy error', error
 		
 	# +++
 	
@@ -75,6 +103,44 @@ exports.create_bare_proxy = (srv_imp=http, config=null) ->
 
 exports.pem_manager = new class
 	constructor: () ->
+		@default_key = """
+		-----BEGIN RSA PRIVATE KEY-----
+		MIICXAIBAAKBgQCxpU2DKCV61/Nm8iy3TBVzyMejZ+Rzj3mVRPM647US1bE/bCBn
+		zP4w12IPsbo1D5WKzBeDTegffAi1U3wHEnSD8l1bCWiLuBCnD5AuR78NBCjOuL/S
+		U0vV0bjKNW0+nWhi/YSsIRbdkTaTXuYHZBfI67HwbkpI0JjgNGCWBm530wIDAQAB
+		AoGAFVRwyye94FMfoaPAZL3Y8Y8REXi/AHUgtyCRR+fhbQKFhsT32x7NApZJ6vJ/
+		FjHp1cGNrTFkhqtA7Gy6vqqjnKT9ySbTLwZboMK/yVP8JBT0rqMby9LHp+whhmvz
+		wCMSs7zOQeUh0cJGWUVyVB3ezF4qhvy15rOUN2UADkgMzykCQQDWvQVs9fX+wOfp
+		D09IIFBrchlIoQN32jjSIkgzCYrJSJK6oyEN2RujLG1h5ro8Y/WSV4QPE3UShZ8h
+		orzIwDtPAkEA08exwad0loNGT8UGTjQwmuas2yvjboI28z5TgSn0N3OwZSux8Ghx
+		qyYb2D+RVlMZGbCpn5FJhyFPJx/9m+zKPQJALWkNk6wz2CqtIDD3oBYNS5t2U1CR
+		bi/8ohtTz08uRUCOnt9OZyJJYOlNPE3RhmHRFaBiMdn4gPE25KMIbx+PqwJBAJ7U
+		UrU5IJBNTes/ibYXICjcPeF2LfDQSePt53SkgVshMbb+qUnzGuTQBOwO6LJESjvh
+		KaXZsbpdud5O+MX7NcUCQAswPd8s/+ulwRUBbChA+2+uZNHSBMpmEZxvLTsWTHRX
+		p5tMmK/oAKqmtSTuL8geqXy7++JS99jEpeymJgtHAyk=
+		-----END RSA PRIVATE KEY-----
+		"""
+		
+		# +++
+		
+		@default_cert = """
+		-----BEGIN CERTIFICATE-----
+		MIICATCCAWoCCQCw82O2d2aB/jANBgkqhkiG9w0BAQUFADBFMQswCQYDVQQGEwJB
+		VTETMBEGA1UECBMKU29tZS1TdGF0ZTEhMB8GA1UEChMYSW50ZXJuZXQgV2lkZ2l0
+		cyBQdHkgTHRkMB4XDTEzMTEyMDE3NDIyM1oXDTEzMTIyMDE3NDIyM1owRTELMAkG
+		A1UEBhMCQVUxEzARBgNVBAgTClNvbWUtU3RhdGUxITAfBgNVBAoTGEludGVybmV0
+		IFdpZGdpdHMgUHR5IEx0ZDCBnzANBgkqhkiG9w0BAQEFAAOBjQAwgYkCgYEAsaVN
+		gygletfzZvIst0wVc8jHo2fkc495lUTzOuO1EtWxP2wgZ8z+MNdiD7G6NQ+ViswX
+		g03oH3wItVN8BxJ0g/JdWwloi7gQpw+QLke/DQQozri/0lNL1dG4yjVtPp1oYv2E
+		rCEW3ZE2k17mB2QXyOux8G5KSNCY4DRglgZud9MCAwEAATANBgkqhkiG9w0BAQUF
+		AAOBgQBoZUgGUsjpuXvnYwvG/P7xHcVYb6klun8KWJd2G4tpZrkXMUphgmXyCe97
+		15sd0h0b0gnd6T4Wvu0cq+Pc2+iWSpobHwfjtSqeYVFEw0MwvqLaK68U9vMOcKki
+		7rKw7Xzg9hbwgyASUAcT2S2SmCRg4zNIfpWCFChMfQa5OLsV0Q==
+		-----END CERTIFICATE-----
+		"""
+		
+		# +++
+		
 		@pems = {}
 		
 	get: (hostname, port, callback) ->
@@ -87,8 +153,8 @@ exports.pem_manager = new class
 		# +++
 		
 		pem = {
-			key: fs.readFileSync('server-key.pem')
-			cert: fs.readFileSync('server-cert.pem')
+			key: @default_key
+			cert: @default_cert
 		}
 		
 		# +++
