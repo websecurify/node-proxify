@@ -1,0 +1,67 @@
+#!/usr/bin/env node
+(function() {
+  var BLUE, END, GREEN, RED, YELLOW, lib, port, proxy, req_interceptor, res_interceptor;
+
+  lib = require('../lib');
+
+  port = parseInt(process.argv[2]);
+
+  if (isNaN(port)) {
+    port = 8080;
+  }
+
+  proxy = lib.create_mitm_proxy().listen(port);
+
+  END = '\x1b[0m';
+
+  RED = '\x1b[91m';
+
+  BLUE = '\x1b[94m';
+
+  GREEN = '\x1b[92m';
+
+  YELLOW = '\x1b[93m';
+
+  req_interceptor = function(port) {
+    var name, value, _ref;
+    console.log("" + BLUE + port.req.method + " " + port.req.url + " HTTP/" + port.req.httpVersion + END);
+    _ref = port.req.headers;
+    for (name in _ref) {
+      value = _ref[name];
+      console.log("" + GREEN + name + ": " + value + END);
+    }
+    console.log('');
+    port.req.on('data', function(data) {
+      return console.log("" + YELLOW + (data.toString()) + END);
+    });
+    return port.req.on('end', function() {
+      return console.log('');
+    });
+  };
+
+  res_interceptor = function(port) {
+    var name, value, _ref;
+    console.log("" + RED + "HTTP/" + port.res.httpVersion + " " + port.res.statusCode + " " + port.res.statusMessage + END);
+    _ref = port.res.headers;
+    for (name in _ref) {
+      value = _ref[name];
+      console.log("" + GREEN + name + ": " + value + END);
+    }
+    console.log('');
+    port.res.on('data', function(data) {
+      return console.log("" + YELLOW + (data.toString()) + END);
+    });
+    return port.res.on('end', function() {
+      return console.log('');
+    });
+  };
+
+  proxy.on('intercept-request', req_interceptor);
+
+  proxy.on('sub-intercept-request', req_interceptor);
+
+  proxy.on('intercept-response', res_interceptor);
+
+  proxy.on('sub-intercept-response', res_interceptor);
+
+}).call(this);
