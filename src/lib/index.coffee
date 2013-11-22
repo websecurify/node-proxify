@@ -92,7 +92,7 @@ exports.create_bare_proxy = (srv_imp=http, config=null) ->
 			res.writeHead 500, {'Content-Type': 'text/plain'}
 			res.end 'Something blew up!'
 			
-		# +++
+		# ^^^
 		
 		req.pipe connector, {end: true}
 		
