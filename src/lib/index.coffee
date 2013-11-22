@@ -11,6 +11,25 @@ exports.create_bare_proxy = (srv_imp=http, config=null) ->
 	# +++
 	
 	proxy.on 'request', (req, res) ->
+		options = url.parse req.url
+		
+		# ^^^
+		
+		if config
+			options.protocol = config.overwrite_protocol if config.overwrite_protocol?
+			options.hostname = config.overwrite_hostname if config.overwrite_hostname?
+			options.port = config.overwrite_port if config.overwrite_port?
+			
+		# ^^^
+		
+		options.protocol ?= 'http:'
+		
+		# ^^^
+		
+		req.url = url.format options
+		
+		# ^^^
+		
 		port = {}
 		
 		# ^^^
@@ -27,25 +46,9 @@ exports.create_bare_proxy = (srv_imp=http, config=null) ->
 		
 		# ^^^
 		
-		options = url.parse req.url
 		options.headers = req.headers
 		options.method = req.method
 		options.agent = false
-		
-		# ^^^
-		
-		if config
-			options.protocol = config.overwrite_protocol if config.overwrite_protocol?
-			options.hostname = config.overwrite_hostname if config.overwrite_hostname?
-			options.port = config.overwrite_port if config.overwrite_port?
-			
-		# ^^^
-		
-		options.protocol ?= 'http:'
-		
-		# ~~~
-		
-		req.url = url.format options
 		
 		# ^^^
 		
