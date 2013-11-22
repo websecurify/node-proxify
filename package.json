@@ -1,5 +1,5 @@
 {
-	"name": "proxify",
+	"name": "node-proxify",
 	"version": "0.5.0",
 	"author": "Websecurify <contact@websecurify.com>",
 	"description": "Simple proxy for node.",

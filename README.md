@@ -20,7 +20,7 @@ Proxify is a man-in-the-middle http proxy tool.
 
 Install it with npm.
 
-	npm install proxify
+	npm install node-proxify
 
 # Tool Usage
 
