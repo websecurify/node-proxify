@@ -17,7 +17,7 @@ proxy.on('request', (req) => {
         objectMode: true,
 
         transform(chunk, encoding, callback) {
-            console.log('>>>', chunk.toString())
+            console.log('>>>', chunk)
 
             callback(null, chunk)
         }
@@ -29,7 +29,7 @@ proxy.on('response', (res) => {
         objectMode: true,
 
         transform(chunk, encoding, callback) {
-            console.log('<<<', chunk.toString())
+            console.log('<<<', chunk)
 
             callback(null, chunk)
         }
