@@ -12,7 +12,23 @@ const certManager = new CertManager({defaultRootKeysAndCert})
 
 const proxy = new Proxy({certManager})
 
+proxy.on('connect', (con) => {
+    if (con.connect.hostname === 'secapps.com') {
+        con.filter = 'passthrough'
+    } else
+    if (con.connect.hostname === 'yahoo.com') {
+        con.filter = 'deny'
+    }
+})
+
 proxy.on('request', (req) => {
+    if (req.request.hostname === 'secapps.com') {
+        req.filter = 'passthrough'
+    } else
+    if (req.request.hostname === 'yahoo.com') {
+        req.filter = 'deny'
+    }
+
     req.pipeline.first(new Transform({
         objectMode: true,
 
@@ -25,6 +41,13 @@ proxy.on('request', (req) => {
 })
 
 proxy.on('response', (res) => {
+    if (res.response.statusCode === 302) {
+        res.filter = 'passthrough'
+    } else
+    if (res.response.statusCode === 404) {
+        res.filter = 'deny'
+    }
+
     res.pipeline.first(new Transform({
         objectMode: true,
 
