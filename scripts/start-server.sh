@@ -4,11 +4,18 @@ const { Transform } = require('stream')
 
 const { Proxy } = require('../lib/proxy')
 const { CertManager } = require('../lib/cert-manager')
-const { generateRootKeysAndCert } = require('../lib/cert-utils')
+const { CachingCertManagerFs } = require('../lib/cert-manager-fs')
+const { generateCaKeysAndCert } = require('../lib/cert-utils')
 
-const defaultRootKeysAndCert = generateRootKeysAndCert()
+let certManager
 
-const certManager = new CertManager({defaultRootKeysAndCert})
+if (process.argv[2]) {
+    certManager = new CachingCertManagerFs(process.argv[2])
+} else {
+    const defaultCaKeysAndCert = generateCaKeysAndCert()
+
+    certManager = new CertManager({defaultCaKeysAndCert})
+}
 
 const proxy = new Proxy({certManager})
 
