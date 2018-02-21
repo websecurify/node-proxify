@@ -18,6 +18,8 @@ proxy.on('connect', (con) => {
     } else
     if (con.connect.hostname === 'yahoo.com') {
         con.filter = 'deny'
+    } else {
+        con.filter = 'pipeline'
     }
 })
 
@@ -27,6 +29,8 @@ proxy.on('request', (req) => {
     } else
     if (req.request.hostname === 'yahoo.com') {
         req.filter = 'deny'
+    } else {
+        req.filter = 'pipeline'
     }
 
     req.pipeline.first(new Transform({
@@ -46,6 +50,8 @@ proxy.on('response', (res) => {
     } else
     if (res.response.statusCode === 404) {
         res.filter = 'deny'
+    } else {
+        res.filter = 'pipeline'
     }
 
     res.pipeline.first(new Transform({
