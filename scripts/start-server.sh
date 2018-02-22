@@ -44,7 +44,7 @@ proxy.on('request', (req) => {
         objectMode: true,
 
         transform(chunk, encoding, callback) {
-            console.log('>>>', chunk)
+            //console.log('>>>', chunk)
 
             callback(null, chunk)
         }
@@ -65,11 +65,85 @@ proxy.on('response', (res) => {
         objectMode: true,
 
         transform(chunk, encoding, callback) {
-            console.log('<<<', chunk)
+            //console.log('<<<', chunk)
 
             callback(null, chunk)
         }
     }))
 })
+
+const datas = []
+
+class BroadcastChannel {
+    constructor() {
+        setTimeout(() => {
+            if (this.onmessage) {
+                this.onmessage(datas.pop())
+            }
+        }, 10000)
+    }
+
+    postMessage(data) {
+        datas.push(data)
+    }
+}
+
+class InterceptorStream extends Transform {
+    constructor(outChannel, inChannel, id) {
+        super({allowHalfOpen: true, readableObjectMode: true, writableObjectMode: true, readableHighWaterMark: Number.MAX_VALUE, writableHighWaterMark: Number.MAX_VALUE})
+
+        this.outChannel = outChannel
+        this.inChannel = inChannel
+
+        this.id = id
+
+        this.chunks = []
+    }
+
+    _transform(chunk, encoding, callback) {
+        this.chunks.push(chunk)
+
+        callback()
+    }
+
+    _flush(callback) {
+        const bc = new BroadcastChannel(this.outChannel)
+
+        bc.postMessage({id: this.id, chunks: this.chunks})
+
+        this.bc = new BroadcastChannel(this.inChannel)
+
+        this.bc.onmessage = (event) => {
+            this.bc = undefined
+
+            const { data: chunks } = event
+
+            this.chunks.forEach((chunk) => {
+                this.push(chunk)
+            })
+
+            this.id = undefined
+            this.chunks = undefined
+
+            callback()
+        }
+    }
+}
+
+if (process.argv[3] === 'yes') {
+    proxy.on('request', (req) => {
+        req.filter = 'pipeline'
+
+        req.pipeline.first(new InterceptorStream('b1', 'b2', req.id))
+    })
+}
+
+if (process.argv[4] === 'yes') {
+    proxy.on('response', (res) => {
+        res.filter = 'pipeline'
+
+        res.pipeline.first(new InterceptorStream('b1', 'b2', res.id))
+    })
+}
 
 proxy.listen(8080)
