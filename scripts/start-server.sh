@@ -72,19 +72,28 @@ proxy.on('response', (res) => {
     }))
 })
 
-const datas = []
+const messages = []
 
 class BroadcastChannel {
     constructor() {
         setTimeout(() => {
             if (this.onmessage) {
-                this.onmessage(datas.pop())
+                const message = messages.pop()
+
+                const { id, chunks } = message
+
+                const head = chunks[0]
+                const body = Buffer.from(Buffer.concat(chunks.slice(1)).toString().replace('123', 'ABC'))
+
+                const event = {data: {id, chunks: [head, body]}}
+
+                this.onmessage(event)
             }
         }, 10000)
     }
 
-    postMessage(data) {
-        datas.push(data)
+    postMessage(message) {
+        messages.push(message)
     }
 }
 
@@ -111,19 +120,21 @@ class InterceptorStream extends Transform {
 
         bc.postMessage({id: this.id, chunks: this.chunks})
 
+        this.id = undefined
+        this.chunks = undefined
+
         this.bc = new BroadcastChannel(this.inChannel)
 
         this.bc.onmessage = (event) => {
             this.bc = undefined
 
-            const { data: chunks } = event
+            const { data } = event
 
-            this.chunks.forEach((chunk) => {
+            const { chunks } = data
+
+            chunks.forEach((chunk) => {
                 this.push(chunk)
             })
-
-            this.id = undefined
-            this.chunks = undefined
 
             callback()
         }
