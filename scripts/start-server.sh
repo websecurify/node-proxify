@@ -157,4 +157,4 @@ if (process.argv[4] === 'yes') {
     })
 }
 
-proxy.listen(8080)
+proxy.listen(process.env.PORT || 8080)
