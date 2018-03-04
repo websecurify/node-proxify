@@ -12,7 +12,7 @@ let certManager
 if (process.argv[2]) {
     certManager = new CachingCertManagerFs(process.argv[2])
 } else {
-    const defaultCaKeysAndCert = generateCaKeysAndCert()
+    const defaultCaKeysAndCert = generateCaKeysAndCert({commonName: 'Default CA'})
 
     certManager = new CertManager({defaultCaKeysAndCert})
 }
