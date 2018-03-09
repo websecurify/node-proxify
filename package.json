@@ -1,6 +1,6 @@
 {
 	"name": "node-proxify",
-	"version": "1.6.2",
+	"version": "1.6.3",
 	"author": "Websecurify <contact@websecurify.com>",
 	"description": "Simple proxy for node.",
 	"license": "MIT",
